@@ -108,7 +108,7 @@ class BaseTest < Test::Unit::TestCase
     @p.extend m
     assert_equal [], logger.logs
 
-    ret = @p.string_safe_encoding("abc\xff.\x01f"){|s| s.split(/\./) }
+    ret = @p.string_safe_encoding("abc\xff.\x01f"){|s| s.split(".") }
     assert_equal ['abc?', "\u0001f"], ret
     assert_equal 1, logger.logs.size
     assert{ logger.logs.first.include?("invalid byte sequence is replaced in ") }
@@ -143,6 +143,104 @@ class BaseTest < Test::Unit::TestCase
       # must return 0.
       File.open(lock_path, "w") do |f|
         assert_equal 0, f.flock(File::LOCK_EX|File::LOCK_NB)
+      end
+    end
+  end
+
+  test '`ArgumentError` when `conf` is not `Fluent::Config::Element`' do
+    assert_raise ArgumentError.new('BUG: type of conf must be Fluent::Config::Element, but Hash is passed.') do
+      @p.configure({})
+    end
+  end
+
+  sub_test_case 'system_config.workers value after configure' do
+    def assert_system_config_workers_value(data)
+      conf = config_element()
+      conf.set_target_worker_ids(data[:target_worker_ids])
+      @p.configure(conf)
+      assert{ @p.system_config.workers == data[:expected] }
+    end
+
+    def stub_supervisor_mode
+      stub(Fluent::Engine).supervisor_mode { true }
+      stub(Fluent::Engine).worker_id { -1 }
+    end
+
+    sub_test_case 'with <system> workers 3 </system>' do
+      setup do
+        system_config = Fluent::SystemConfig.new
+        system_config.workers = 3
+        stub(Fluent::Engine).system_config { system_config }
+      end
+
+      data(
+        'without <worker> directive',
+        {
+          target_worker_ids: [],
+          expected: 3
+        },
+        keep: true
+      )
+      data(
+        'with <worker 0>',
+        {
+          target_worker_ids: [0],
+          expected: 1
+        },
+        keep: true
+      )
+      data(
+        'with <worker 0-1>',
+        {
+          target_worker_ids: [0, 1],
+          expected: 2
+        },
+        keep: true
+      )
+      data(
+        'with <worker 0-2>',
+        {
+          target_worker_ids: [0, 1, 2],
+          expected: 3
+        },
+        keep: true
+      )
+
+      test 'system_config.workers value after configure' do
+        assert_system_config_workers_value(data)
+      end
+
+      test 'system_config.workers value after configure  with supervisor_mode' do
+        stub_supervisor_mode
+        assert_system_config_workers_value(data)
+      end
+    end
+
+    sub_test_case 'without <system> directive' do
+      data(
+        'without <worker> directive',
+        {
+          target_worker_ids: [],
+          expected: 1
+        },
+        keep: true
+      )
+      data(
+        'with <worker 0>',
+        {
+          target_worker_ids: [0],
+          expected: 1
+        },
+        keep: true
+      )
+
+      test 'system_config.workers value after configure' do
+        assert_system_config_workers_value(data)
+      end
+
+      test 'system_config.workers value after configure  with supervisor_mode' do
+        stub_supervisor_mode
+        assert_system_config_workers_value(data)
       end
     end
   end

@@ -167,6 +167,7 @@ class ConfigTest < Test::Unit::TestCase
             tag: tag.dummy
         - source:
             $type: tcp
+            $log_level: info
             tag: tag.tcp
             parse:
               $arg:
@@ -176,6 +177,7 @@ class ConfigTest < Test::Unit::TestCase
         - match:
             $tag: tag.*
             $type: stdout
+            $log_level: debug
             buffer:
               $type: memory
               flush_interval: 1s
@@ -208,10 +210,12 @@ class ConfigTest < Test::Unit::TestCase
           'tag.dummy',
           'tcp',
           'tag.tcp',
+          'info',
           'none',
           'why.parse.section.doesnot.have.arg,huh',
           'stdout',
           'tag.*',
+          'debug',
           'null',
           '**',
           '@FLUENT_LOG',
@@ -224,10 +228,12 @@ class ConfigTest < Test::Unit::TestCase
           dummy_source_conf['tag'],
           tcp_source_conf['@type'],
           tcp_source_conf['tag'],
+          tcp_source_conf['@log_level'],
           parse_tcp_conf['@type'],
           parse_tcp_conf.arg,
           match_conf['@type'],
           match_conf.arg,
+          match_conf['@log_level'],
           fluent_log_conf['@type'],
           fluent_log_conf.arg,
           label_conf.arg,
@@ -342,27 +348,6 @@ class ConfigTest < Test::Unit::TestCase
   def write_config(path, data, encoding: 'utf-8')
     FileUtils.mkdir_p(File.dirname(path))
     File.open(path, "w:#{encoding}:utf-8") {|f| f.write data }
-  end
-
-  def test_inline
-    prepare_config
-    opts = {
-      :config_path => "#{TMP_DIR}/config_test_1.conf",
-      :inline_config => "<source>\n  type http\n  port 2222\n </source>",
-      :use_v1_config => false
-    }
-    assert_nothing_raised do
-      Fluent::Supervisor.new(opts)
-    end
-    create_warn_dummy_logger
-  end
-
-  def create_warn_dummy_logger
-    dl_opts = {}
-    dl_opts[:log_level] = ServerEngine::DaemonLogger::WARN
-    logdev = Fluent::Test::DummyLogDevice.new
-    logger = ServerEngine::DaemonLogger.new(logdev, dl_opts)
-    $log = Fluent::Log.new(logger)
   end
 
   sub_test_case '.build' do

@@ -53,10 +53,16 @@ module Fluent::Plugin
         }
       end
 
+      def unwatch_removed_targets(existing_targets)
+        @map.reject { |key, entry|
+          existing_targets.key?(key)
+        }.each_key { |key|
+          unwatch_key(key)
+        }
+      end
+
       def unwatch(target_info)
-        if (entry = @map.delete(@follow_inodes ? target_info.ino : target_info.path))
-          entry.update_pos(UNWATCHED_POSITION)
-        end
+        unwatch_key(@follow_inodes ? target_info.ino : target_info.path)
       end
 
       def load(existing_targets = nil)
@@ -96,6 +102,7 @@ module Fluent::Plugin
         end
 
         entries = fetch_compacted_entries
+        @logger&.debug "Compacted entries: ", entries.keys
 
         @file_mutex.synchronize do
           if last_modified == @file.mtime && size == @file.size
@@ -117,17 +124,31 @@ module Fluent::Plugin
 
       private
 
-      def compact(existing_targets = nil)
-        @file_mutex.synchronize do
-          entries = fetch_compacted_entries(existing_targets).values.map(&:to_entry_fmt)
-
-          @file.pos = 0
-          @file.truncate(0)
-          @file.write(entries.join)
+      def unwatch_key(key)
+        if (entry = @map.delete(key))
+          entry.update_pos(UNWATCHED_POSITION)
         end
       end
 
-      def fetch_compacted_entries(existing_targets = nil)
+      def compact(existing_targets = nil)
+        @file_mutex.synchronize do
+          entries = fetch_compacted_entries
+          @logger&.debug "Compacted entries: ", entries.keys
+
+          if existing_targets
+            entries = remove_deleted_files_entries(entries, existing_targets)
+            @logger&.debug "Remove missing entries.",
+                           existing_targets: existing_targets.keys,
+                           entries_after_removing: entries.keys
+          end
+
+          @file.pos = 0
+          @file.truncate(0)
+          @file.write(entries.values.map(&:to_entry_fmt).join)
+        end
+      end
+
+      def fetch_compacted_entries
         entries = {}
 
         @file.pos = 0
@@ -145,31 +166,24 @@ module Fluent::Plugin
           if pos == UNWATCHED_POSITION
             @logger.debug "Remove unwatched line from pos_file: #{line}" if @logger
           else
-            if entries.include?(path)
-              @logger.warn("#{path} already exists. use latest one: deleted #{entries[path]}") if @logger
-            end
-
             if @follow_inodes
+              @logger&.warn("#{path} (inode: #{ino}) already exists. use latest one: deleted #{entries[ino]}") if entries.include?(ino)
               entries[ino] = Entry.new(path, pos, ino, file_pos + path.bytesize + 1)
             else
+              @logger&.warn("#{path} already exists. use latest one: deleted #{entries[path]}") if entries.include?(path)
               entries[path] = Entry.new(path, pos, ino, file_pos + path.bytesize + 1)
             end
             file_pos += line.size
           end
         end
 
-        entries = remove_deleted_files_entries(entries, existing_targets)
         entries
       end
 
       def remove_deleted_files_entries(existent_entries, existing_targets)
-        if existing_targets
-          existent_entries.select { |path_or_ino|
-            existing_targets.key?(path_or_ino)
-          }
-        else
-          existent_entries
-        end
+        existent_entries.select { |path_or_ino|
+          existing_targets.key?(path_or_ino)
+        }
       end
     end
 

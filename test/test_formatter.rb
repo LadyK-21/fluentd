@@ -18,7 +18,7 @@ module FormatterTest
 
     def test_call
       formatter = Formatter.new
-      formatter.configure({})
+      formatter.configure(config_element())
       assert_raise NotImplementedError do
         formatter.format('tag', Engine.now, {})
       end
@@ -130,7 +130,7 @@ module FormatterTest
     include FormatterTest
 
     def setup
-      @formatter = TextFormatter::MessagePackFormatter.new
+      @formatter = Fluent::Test::FormatterTestDriver.new(TextFormatter::MessagePackFormatter)
       @time = Engine.now
     end
 
@@ -146,7 +146,7 @@ module FormatterTest
     include FormatterTest
 
     def setup
-      @formatter = TextFormatter::LabeledTSVFormatter.new
+      @formatter = Fluent::Test::FormatterTestDriver.new(TextFormatter::LabeledTSVFormatter)
       @time = Engine.now
       @newline = if Fluent.windows?
                    "\r\n"
@@ -156,16 +156,16 @@ module FormatterTest
     end
 
     def test_config_params
-      assert_equal "\t", @formatter.delimiter
-      assert_equal  ":", @formatter.label_delimiter
+      assert_equal "\t", @formatter.instance.delimiter
+      assert_equal  ":", @formatter.instance.label_delimiter
 
       @formatter.configure(
         'delimiter'       => ',',
         'label_delimiter' => '=',
       )
 
-      assert_equal ",", @formatter.delimiter
-      assert_equal "=", @formatter.label_delimiter
+      assert_equal ",", @formatter.instance.delimiter
+      assert_equal "=", @formatter.instance.label_delimiter
     end
 
     def test_format
@@ -220,14 +220,14 @@ module FormatterTest
     include FormatterTest
 
     def setup
-      @formatter = TextFormatter::CsvFormatter.new
+      @formatter = Fluent::Test::FormatterTestDriver.new(TextFormatter::CsvFormatter)
       @time = Engine.now
     end
 
     def test_config_params
-      assert_equal ',', @formatter.delimiter
-      assert_equal true, @formatter.force_quotes
-      assert_nil @formatter.fields
+      assert_equal ',', @formatter.instance.delimiter
+      assert_equal true, @formatter.instance.force_quotes
+      assert_nil @formatter.instance.fields
     end
 
     data(
@@ -237,8 +237,8 @@ module FormatterTest
     def test_config_params_with_customized_delimiters(data)
       expected, target = data
       @formatter.configure('delimiter' => target, 'fields' => 'a,b,c')
-      assert_equal expected, @formatter.delimiter
-      assert_equal ['a', 'b', 'c'], @formatter.fields
+      assert_equal expected, @formatter.instance.delimiter
+      assert_equal ['a', 'b', 'c'], @formatter.instance.fields
     end
 
     def test_format
@@ -299,7 +299,7 @@ module FormatterTest
       'blank' => 'one,,two,three')
     def test_config_params_with_fields(data)
       @formatter.configure('fields' => data)
-      assert_equal %w(one two three), @formatter.fields
+      assert_equal %w(one two three), @formatter.instance.fields
     end
   end
 
@@ -313,31 +313,34 @@ module FormatterTest
                  end
     end
 
+    def create_driver(klass_or_str)
+      Fluent::Test::FormatterTestDriver.new(klass_or_str)
+    end
 
     def test_config_params
-      formatter = TextFormatter::SingleValueFormatter.new
-      assert_equal "message", formatter.message_key
+      formatter = create_driver(TextFormatter::SingleValueFormatter)
+      assert_equal "message", formatter.instance.message_key
 
       formatter.configure('message_key' => 'foobar')
-      assert_equal "foobar", formatter.message_key
+      assert_equal "foobar", formatter.instance.message_key
     end
 
     def test_format
-      formatter = Fluent::Plugin.new_formatter('single_value')
+      formatter = create_driver('single_value')
       formatter.configure({})
       formatted = formatter.format('tag', Engine.now, {'message' => 'awesome'})
       assert_equal("awesome#{@newline}", formatted)
     end
 
     def test_format_without_newline
-      formatter = Fluent::Plugin.new_formatter('single_value')
+      formatter = create_driver('single_value')
       formatter.configure('add_newline' => 'false')
       formatted = formatter.format('tag', Engine.now, {'message' => 'awesome'})
       assert_equal("awesome", formatted)
     end
 
     def test_format_with_message_key
-      formatter = TextFormatter::SingleValueFormatter.new
+      formatter = create_driver(TextFormatter::SingleValueFormatter)
       formatter.configure('message_key' => 'foobar')
       formatted = formatter.format('tag', Engine.now, {'foobar' => 'foo'})
 

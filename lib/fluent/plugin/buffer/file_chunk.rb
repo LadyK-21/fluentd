@@ -204,7 +204,7 @@ module Fluent
           end
         end
 
-        # used only for queued v0.12 buffer path
+        # used only for queued v0.12 buffer path or broken files
         def self.unique_id_from_path(path)
           if /\.(b|q)([0-9a-f]+)\.[^\/]*\Z/n =~ path # //n switch means explicit 'ASCII-8BIT' pattern
             return $2.scan(/../).map{|x| x.to_i(16) }.pack('C*')
@@ -399,7 +399,7 @@ module Fluent
           end
 
           if chunk.slice(0, 2) == BUFFER_HEADER
-            size = chunk.slice(2, 4).unpack('N').first
+            size = chunk.slice(2, 4).unpack1('N')
             if size
               return Fluent::MessagePackFactory.msgpack_unpacker(symbolize_keys: true).feed(chunk.slice(6, size)).read rescue nil
             end

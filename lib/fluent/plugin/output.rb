@@ -99,7 +99,6 @@ module Fluent
         config_param :retry_max_interval, :time, default: nil, desc: 'The maximum interval seconds for exponential backoff between retries while failing.'
 
         config_param :retry_randomize, :bool, default: true, desc: 'If true, output plugin will retry after randomized interval not to do burst retries.'
-        config_param :disable_chunk_backup, :bool, default: false, desc: 'If true, chunks are thrown away when unrecoverable error happens'
       end
 
       config_section :secondary, param_name: :secondary_config, required: false, multi: false, final: true do
@@ -199,6 +198,7 @@ module Fluent
       def initialize
         super
         @counter_mutex = Mutex.new
+        @flush_thread_mutex = Mutex.new
         @buffering = false
         @delayed_commit = false
         @as_secondary = false
@@ -378,6 +378,7 @@ module Fluent
           buffer_conf = conf.elements(name: 'buffer').first || Fluent::Config::Element.new('buffer', '', {}, [])
           @buffer = Plugin.new_buffer(buffer_type, parent: self)
           @buffer.configure(buffer_conf)
+          keep_buffer_config_compat
           @buffer.enable_update_timekeys if @chunk_key_time
 
           @flush_at_shutdown = @buffer_config.flush_at_shutdown
@@ -425,7 +426,9 @@ module Fluent
           end
           @secondary.acts_as_secondary(self)
           @secondary.configure(secondary_conf)
-          if (self.class != @secondary.class) && (@custom_format || @secondary.implement?(:custom_format))
+          if (@secondary.class.to_s != "Fluent::Plugin::SecondaryFileOutput") &&
+             (self.class != @secondary.class) &&
+             (@custom_format || @secondary.implement?(:custom_format))
             log.warn "Use different plugin for secondary. Check the plugin works with primary like secondary_file", primary: self.class.to_s, secondary: @secondary.class.to_s
           end
         else
@@ -433,6 +436,12 @@ module Fluent
         end
 
         self
+      end
+
+      def keep_buffer_config_compat
+        # Need this to call `@buffer_config.disable_chunk_backup` just as before,
+        # since some plugins may use this option in this way.
+        @buffer_config[:disable_chunk_backup] = @buffer.disable_chunk_backup
       end
 
       def start
@@ -589,6 +598,42 @@ module Fluent
         @secondary.terminate if @secondary
 
         super
+      end
+
+      def actual_flush_thread_count
+        return 0 unless @buffering
+        return @buffer_config.flush_thread_count unless @as_secondary
+        @primary_instance.buffer_config.flush_thread_count
+      end
+
+      # Ensures `path` (filename or filepath) processable
+      # only by the current thread in the current process.
+      # For multiple workers, the lock is shared if `path` is the same value.
+      # For multiple threads, the lock is shared by all threads in the same process.
+      def synchronize_path(path)
+        synchronize_path_in_workers(path) do
+          synchronize_in_threads do
+            yield
+          end
+        end
+      end
+
+      def synchronize_path_in_workers(path)
+        need_worker_lock = system_config.workers > 1
+        if need_worker_lock
+          acquire_worker_lock(path) { yield }
+        else
+          yield
+        end
+      end
+
+      def synchronize_in_threads
+        need_thread_lock = actual_flush_thread_count > 1
+        if need_thread_lock
+          @flush_thread_mutex.synchronize { yield }
+        else
+          yield
+        end
       end
 
       def support_in_v12_style?(feature)
@@ -779,7 +824,7 @@ module Fluent
             if str.include?('${tag}')
               rvalue = rvalue.gsub('${tag}', metadata.tag)
             end
-            if str =~ CHUNK_TAG_PLACEHOLDER_PATTERN
+            if CHUNK_TAG_PLACEHOLDER_PATTERN.match?(str)
               hash = {}
               tag_parts = metadata.tag.split('.')
               tag_parts.each_with_index do |part, i|
@@ -991,17 +1036,17 @@ module Fluent
       #   iteration of event stream, and it should be done just once even if total event stream size
       #   is bigger than chunk_limit_size because of performance.
       def handle_stream_with_custom_format(tag, es, enqueue: false)
-        meta_and_data = {}
+        meta_and_data = Hash.new { |h, k| h[k] = [] }
         records = 0
         es.each(unpacker: Fluent::MessagePackFactory.thread_local_msgpack_unpacker) do |time, record|
           meta = metadata(tag, time, record)
-          meta_and_data[meta] ||= []
           res = format(tag, time, record)
           if res
             meta_and_data[meta] << res
             records += 1
           end
         end
+        meta_and_data.default_proc = nil
         write_guard do
           @buffer.write(meta_and_data, enqueue: enqueue)
         end
@@ -1012,14 +1057,14 @@ module Fluent
 
       def handle_stream_with_standard_format(tag, es, enqueue: false)
         format_proc = generate_format_proc
-        meta_and_data = {}
+        meta_and_data = Hash.new { |h, k| h[k] = MultiEventStream.new }
         records = 0
         es.each(unpacker: Fluent::MessagePackFactory.thread_local_msgpack_unpacker) do |time, record|
           meta = metadata(tag, time, record)
-          meta_and_data[meta] ||= MultiEventStream.new
           meta_and_data[meta].add(time, record)
           records += 1
         end
+        meta_and_data.default_proc = nil
         write_guard do
           @buffer.write(meta_and_data, format: format_proc, enqueue: enqueue)
         end
@@ -1240,18 +1285,10 @@ module Fluent
       end
 
       def backup_chunk(chunk, using_secondary, delayed_commit)
-        if @buffer_config.disable_chunk_backup
+        if @buffer.disable_chunk_backup
           log.warn "disable_chunk_backup is true. #{dump_unique_id_hex(chunk.unique_id)} chunk is thrown away"
         else
-          unique_id = dump_unique_id_hex(chunk.unique_id)
-          safe_plugin_id = plugin_id.gsub(/[ "\/\\:;|*<>?]/, '_')
-          backup_base_dir = system_config.root_dir || DEFAULT_BACKUP_DIR
-          backup_file = File.join(backup_base_dir, 'backup', "worker#{fluentd_worker_id}", safe_plugin_id, "#{unique_id}.log")
-          backup_dir = File.dirname(backup_file)
-
-          log.warn "bad chunk is moved to #{backup_file}"
-          FileUtils.mkdir_p(backup_dir, mode: system_config.dir_permission || Fluent::DEFAULT_DIR_PERMISSION) unless Dir.exist?(backup_dir)
-          File.open(backup_file, 'ab', system_config.file_permission || Fluent::DEFAULT_FILE_PERMISSION) { |f|
+          @buffer.backup(chunk.unique_id) { |f|
             chunk.write_to(f)
           }
         end
@@ -1347,6 +1384,7 @@ module Fluent
       end
 
       def submit_flush_once
+        return unless @buffer_config.flush_thread_count > 0
         # Without locks: it is rough but enough to select "next" writer selection
         @output_flush_thread_current_position = (@output_flush_thread_current_position + 1) % @buffer_config.flush_thread_count
         state = @output_flush_threads[@output_flush_thread_current_position]
@@ -1369,6 +1407,7 @@ module Fluent
       end
 
       def submit_flush_all
+        return unless @buffer_config.flush_thread_count > 0
         while !@retry && @buffer.queued?
           submit_flush_once
           sleep @buffer_config.flush_thread_burst_interval

@@ -355,14 +355,13 @@ EOC
 
     test "fluentd opts" do
       d = create_driver
-      opts = Fluent::Supervisor.default_options
 
       filepath = nil
       begin
         FileUtils.mkdir_p(CONFIG_DIR)
         filepath = File.expand_path('fluentd.conf', CONFIG_DIR)
         FileUtils.touch(filepath)
-        s = Fluent::Supervisor.new(opts.merge(config_path: filepath))
+        s = Fluent::Supervisor.new({config_path: filepath})
         s.configure
       ensure
         FileUtils.rm_r(CONFIG_DIR) rescue _
@@ -393,7 +392,7 @@ EOC
     end
 
     test "emit" do
-      port = unused_port
+      port = unused_port(protocol: :tcp)
       d = create_driver("
   @type monitor_agent
   bind '127.0.0.1'
@@ -452,7 +451,7 @@ EOC
 
   sub_test_case "servlets" do
     setup do
-      @port = unused_port
+      @port = unused_port(protocol: :tcp)
       # check @type and type in one configuration
       conf = <<-EOC
 <source>
@@ -502,7 +501,7 @@ EOC
           v.puts(conf)
         end
 
-        @supervisor = Fluent::Supervisor.new(Fluent::Supervisor.default_options.merge(config_path: @filepath))
+        @supervisor = Fluent::Supervisor.new({config_path: @filepath})
         @supervisor.configure
       ensure
         FileUtils.rm_r(CONFIG_DIR) rescue _
@@ -760,7 +759,7 @@ plugin_id:test_filter\tplugin_category:filter\ttype:test_filter\toutput_plugin:f
     end
 
     setup do
-      @port = unused_port
+      @port = unused_port(protocol: :tcp)
       # check @type and type in one configuration
       conf = <<-EOC
 <source>
@@ -841,7 +840,7 @@ plugin_id:test_filter\tplugin_category:filter\ttype:test_filter\toutput_plugin:f
 
   sub_test_case "check the port number of http server" do
     test "on single worker environment" do
-      port = unused_port
+      port = unused_port(protocol: :tcp)
       d = create_driver("
   @type monitor_agent
   bind '127.0.0.1'
@@ -852,7 +851,7 @@ plugin_id:test_filter\tplugin_category:filter\ttype:test_filter\toutput_plugin:f
     end
 
     test "worker_id = 2 on multi worker environment" do
-      port = unused_port
+      port = unused_port(protocol: :tcp)
       Fluent::SystemConfig.overwrite_system_config('workers' => 4) do
         d = Fluent::Test::Driver::Input.new(Fluent::Plugin::MonitorAgentInput)
         d.instance.instance_eval{ @_fluentd_worker_id = 2 }
@@ -906,7 +905,7 @@ EOC
     end
 
     test "plugins have a variable named buffer does not throws NoMethodError" do
-      port = unused_port
+      port = unused_port(protocol: :tcp)
       d = create_driver("
   @type monitor_agent
   bind '127.0.0.1'

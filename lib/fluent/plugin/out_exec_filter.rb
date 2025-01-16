@@ -163,7 +163,7 @@ module Fluent::Plugin
                     0
                   elsif (@child_respawn == 'inf') || (@child_respawn == '-1')
                     -1
-                  elsif @child_respawn =~ /^\d+$/
+                  elsif /^\d+$/.match?(@child_respawn)
                     @child_respawn.to_i
                   else
                     raise ConfigError, "child_respawn option argument invalid: none(or 0), inf(or -1) or positive number"
@@ -187,7 +187,7 @@ module Fluent::Plugin
       @rr = 0
 
       exit_callback = ->(status){
-        c = @children.select{|child| child.pid == status.pid }.first
+        c = @children.find{|child| child.pid == status.pid }
         if c
           unless self.stopped?
             log.warn "child process exits with error code", code: status.to_i, status: status.exitstatus, signal: status.termsig

@@ -56,7 +56,7 @@ module Fluent
 
         @variable_store = Fluent::VariableStore.fetch_or_build(:buf_file)
 
-        multi_workers_configured = owner.system_config.workers > 1 ? true : false
+        multi_workers_configured = owner.system_config.workers > 1
 
         using_plugin_root_dir = false
         unless @path
@@ -139,13 +139,20 @@ module Fluent
       def resume
         stage = {}
         queue = []
+        exist_broken_file = false
 
         patterns = [@path]
         patterns.unshift @additional_resume_path if @additional_resume_path
         Dir.glob(escaped_patterns(patterns)) do |path|
           next unless File.file?(path)
 
-          log.debug { "restoring buffer file: path = #{path}" }
+          if owner.respond_to?(:buffer_config) && owner.buffer_config&.flush_at_shutdown
+            # When `flush_at_shutdown` is `true`, the remaining chunk files during resuming are possibly broken
+            # since there may be a power failure or similar failure.
+            log.warn { "restoring buffer file: path = #{path}" }
+          else
+            log.debug { "restoring buffer file: path = #{path}" }
+          end
 
           m = new_metadata() # this metadata will be overwritten by resuming .meta file content
                              # so it should not added into @metadata_list for now
@@ -158,6 +165,7 @@ module Fluent
           begin
             chunk = Fluent::Plugin::Buffer::FileChunk.new(m, path, mode, compress: @compress) # file chunk resumes contents of metadata
           rescue Fluent::Plugin::Buffer::FileChunk::FileChunkError => e
+            exist_broken_file = true
             handle_broken_files(path, mode, e)
             next
           end
@@ -182,6 +190,15 @@ module Fluent
 
         queue.sort_by!{ |chunk| chunk.modified_at }
 
+        # If one of the files is corrupted, other files may also be corrupted and be undetected.
+        # The time priods of each chunk are helpful to check the data.
+        if exist_broken_file
+          log.info "Since a broken chunk file was found, it is possible that other files remaining at the time of resuming were also broken. Here is the list of the files."
+          (stage.values + queue).each { |chunk|
+            log.info "  #{chunk.path}:", :created_at => chunk.created_at, :modified_at => chunk.modified_at
+          }
+        end
+
         return stage, queue
       end
 
@@ -195,8 +212,20 @@ module Fluent
       end
 
       def handle_broken_files(path, mode, e)
-        log.error "found broken chunk file during resume. Deleted corresponding files:", :path => path, :mode => mode, :err_msg => e.message
-        # After support 'backup_dir' feature, these files are moved to backup_dir instead of unlink.
+        log.error "found broken chunk file during resume.", :path => path, :mode => mode, :err_msg => e.message
+        unique_id = Fluent::Plugin::Buffer::FileChunk.unique_id_from_path(path)
+        backup(unique_id) { |f|
+          File.open(path, 'rb') { |chunk|
+            chunk.set_encoding(Encoding::ASCII_8BIT)
+            chunk.sync = true
+            chunk.binmode
+            IO.copy_stream(chunk, f)
+          }
+        }
+      rescue => error
+        log.error "backup failed. Delete corresponding files.", :err_msg => error.message
+      ensure
+        log.warn "disable_chunk_backup is true. #{dump_unique_id_hex(unique_id)} chunk is thrown away." if @disable_chunk_backup
         File.unlink(path, path + '.meta') rescue nil
       end
 

@@ -1,3 +1,333 @@
+# v1.18
+
+## Release v1.18.0 - 2024/11/29
+
+### Enhancement
+
+* Add zero-downtime-restart feature for non-Windows
+  https://github.com/fluent/fluentd/pull/4624
+* Add with-source-only feature
+  https://github.com/fluent/fluentd/pull/4661
+  * `fluentd` command: Add `--with-source-only` option
+  * System configuration: Add `with_source_only` option
+* Embedded plugin: Add `out_buffer` plugin, which can be used for buffering and relabeling events
+  https://github.com/fluent/fluentd/pull/4661
+* Config File Syntax: Extend Embedded Ruby Code support for Hashes and Arrays
+  https://github.com/fluent/fluentd/pull/4580
+  * Example: `key {"foo":"#{1 + 1}"} => key {"foo":"2"}`
+  * Please note that this is not backward compatible, although we assume that this will never affect to actual existing configs.
+  * In case the behavior changes unintentionally, you can disable this feature by surrounding the entire value with single quotes.
+    * `key '{"foo":"#{1 + 1}"}' => key {"foo":"#{1 + 1}"}`
+* transport tls: Use SSL_VERIFY_NONE by default
+  https://github.com/fluent/fluentd/pull/4718
+* transport tls: Add ensure_fips option to ensure FIPS compliant mode
+  https://github.com/fluent/fluentd/pull/4720
+* plugin_helper/server: Add receive_buffer_size parameter in transport section
+  https://github.com/fluent/fluentd/pull/4649
+* filter_parser: Now able to handle multiple parsed results
+  https://github.com/fluent/fluentd/pull/4620
+* in_http: add `add_tag_prefix` option
+  https://github.com/fluent/fluentd/pull/4655
+* System configuration: add `path` option in `log` section
+  https://github.com/fluent/fluentd/pull/4604
+
+### Bug Fix
+
+* command: fix NoMethodError of --daemon under Windows
+  https://github.com/fluent/fluentd/pull/4716
+* `fluentd` command: fix `--plugin` (`-p`) option not to overwrite default value
+  https://github.com/fluent/fluentd/pull/4605
+
+### Misc
+
+* http_server: Ready to support Async 2.0 gem
+  https://github.com/fluent/fluentd/pull/4619
+* Minor code refactoring
+  * https://github.com/fluent/fluentd/pull/4641
+* CI fixes
+  * https://github.com/fluent/fluentd/pull/4638
+  * https://github.com/fluent/fluentd/pull/4644
+  * https://github.com/fluent/fluentd/pull/4675
+  * https://github.com/fluent/fluentd/pull/4676
+  * https://github.com/fluent/fluentd/pull/4677
+  * https://github.com/fluent/fluentd/pull/4686
+
+# v1.17
+
+## Release v1.17.1 - 2024/08/19
+
+### Enhancement
+
+* out_http: Add `compress gzip` option
+  https://github.com/fluent/fluentd/pull/4528
+* in_exec: Add `encoding` option to handle non-ascii characters
+  https://github.com/fluent/fluentd/pull/4533
+* in_tail: Add throttling metrics
+  https://github.com/fluent/fluentd/pull/4578
+* compat: Improve method call performance
+  https://github.com/fluent/fluentd/pull/4588
+* in_sample: Add `reuse_record` parameter to reuse the sample data
+  https://github.com/fluent/fluentd/pull/4586
+  * `in_sample` has changed to copy sample data by default to avoid the impact of destructive changes by subsequent plugins.
+  * This increases the load when generating large amounts of sample data.
+  * You can use this new parameter to have the same performance as before.
+
+### Bug Fix
+
+* logger: Fix LoadError with console gem v1.25
+  https://github.com/fluent/fluentd/pull/4492
+* parser_json: Fix wrong LoadError warning
+  https://github.com/fluent/fluentd/pull/4522
+* in_tail: Fix an issue where a large single line could consume a large amount of memory even though `max_line_size` is set
+  https://github.com/fluent/fluentd/pull/4530
+* yaml_parser: Support $log_level element
+  https://github.com/fluent/fluentd/pull/4482
+
+### Misc
+
+* Comment out inappropriate default configuration about out_forward
+  https://github.com/fluent/fluentd/pull/4523
+* gemspec: Remove unnecessary files from released gem
+  https://github.com/fluent/fluentd/pull/4534
+* plugin-generator: Update gemspec to remove unnecessary files
+  https://github.com/fluent/fluentd/pull/4535
+* Suppress non-parenthesis warnings
+  https://github.com/fluent/fluentd/pull/4594
+* Fix FrozenError in http_server plugin helper
+  https://github.com/fluent/fluentd/pull/4598
+* Add logger gem dependency for Ruby 3.5
+  https://github.com/fluent/fluentd/pull/4589
+* out_file: Add warn message for symlink_path setting
+  https://github.com/fluent/fluentd/pull/4502
+
+## Release v1.17.0 - 2024/04/30
+
+### Enhancement
+
+* in_http: Recognize CSP reports as JSON data
+  https://github.com/fluent/fluentd/pull/4282
+* out_http: Add option to reuse connections
+  https://github.com/fluent/fluentd/pull/4330
+* in_tail: Expand glob capability for square brackets and one character matcher
+  https://github.com/fluent/fluentd/pull/4401
+* out_http: Support AWS Signature Version 4 authentication
+  https://github.com/fluent/fluentd/pull/4459
+
+### Bug Fix
+
+* Make sure `parser_json` and `parser_msgpack` return `Hash`.
+  Make `parser_json` and `parser_msgpack` accept only `Hash` or `Array` of `Hash`.
+  https://github.com/fluent/fluentd/pull/4474
+* filter_parser: Add error event for multiple parsed results
+  https://github.com/fluent/fluentd/pull/4478
+
+### Misc
+
+* Raise minimum required ruby version
+  https://github.com/fluent/fluentd/pull/4288
+* Require missing dependent gems as of Ruby 3.4-dev
+  https://github.com/fluent/fluentd/pull/4411
+* Minor code refactoring
+  https://github.com/fluent/fluentd/pull/4294
+  https://github.com/fluent/fluentd/pull/4299
+  https://github.com/fluent/fluentd/pull/4302
+  https://github.com/fluent/fluentd/pull/4320
+* CI fixes
+  https://github.com/fluent/fluentd/pull/4369
+  https://github.com/fluent/fluentd/pull/4433
+  https://github.com/fluent/fluentd/pull/4452
+  https://github.com/fluent/fluentd/pull/4477
+* github: unify YAML file extension to .yml
+  https://github.com/fluent/fluentd/pull/4429
+
+# v1.16
+
+## Release v1.16.5 - 2024/03/27
+
+### Bug Fix
+
+* Buffer: Fix emit error of v1.16.4 sometimes failing to process large data
+  exceeding chunk size limit
+  https://github.com/fluent/fluentd/pull/4447
+
+## Release v1.16.4 - 2024/03/14
+
+### Bug Fix
+
+* Fix to avoid processing discarded chunks in write_step_by_step.
+  It fixes not to raise pile of IOError when many `chunk
+  bytes limit exceeds` errors are occurred.
+  https://github.com/fluent/fluentd/pull/4342
+* in_tail: Fix tail watchers in `rotate_wait` state not being managed.
+  https://github.com/fluent/fluentd/pull/4334
+
+### Misc
+
+* buffer: Avoid unnecessary log processing. It will improve performance.
+  https://github.com/fluent/fluentd/pull/4331
+
+## Release v1.16.3 - 2023/11/14
+
+### Bug Fix
+
+* in_tail: Fix a stall bug on !follow_inode case
+  https://github.com/fluent/fluentd/pull/4327
+* in_tail: add warning for silent stop on !follow_inodes case
+  https://github.com/fluent/fluentd/pull/4339
+* Buffer: Fix NoMethodError with empty unstaged chunk arrays
+  https://github.com/fluent/fluentd/pull/4303
+* Fix for rotate_age where Fluentd passes as Symbol
+  https://github.com/fluent/fluentd/pull/4311
+
+## Release v1.16.2 - 2023/07/14
+
+### Bug Fix
+
+* in_tail: Fix new watcher is wrongly detached on rotation when `follow_inodes`,
+  which causes stopping tailing the file
+  https://github.com/fluent/fluentd/pull/4208
+* in_tail: Prevent wrongly unwatching when `follow_inodes`, which causes log
+  duplication
+  https://github.com/fluent/fluentd/pull/4237
+* in_tail: Fix warning log about overwriting entry when `follow_inodes`
+  https://github.com/fluent/fluentd/pull/4214
+* in_tail: Ensure to discard TailWatcher with missing target when `follow_inodes`
+  https://github.com/fluent/fluentd/pull/4239
+* MessagePackFactory: Make sure to reset local unpacker to prevent received
+  broken data from affecting other receiving data
+  https://github.com/fluent/fluentd/pull/4178
+* Fix failure to launch Fluentd on Windows when the log path isn't specified in
+  the command line
+  https://github.com/fluent/fluentd/pull/4188
+* logger: Prevent growing cache size of `ignore_same_log_interval` unlimitedly
+  https://github.com/fluent/fluentd/pull/4229
+* Update sigdump to 0.2.5 to fix wrong value of object counts
+  https://github.com/fluent/fluentd/pull/4225
+
+### Misc
+
+* in_tail: Check detaching inode when `follow_inodes`
+  https://github.com/fluent/fluentd/pull/4191
+* in_tail: Add debug log for pos file compaction
+  https://github.com/fluent/fluentd/pull/4228
+* Code improvements detected by RuboCop Performance
+  https://github.com/fluent/fluentd/pull/4201
+  https://github.com/fluent/fluentd/pull/4210
+* Add notice for unused argument `unpacker` of `ChunkMessagePackEventStreamer.each`
+  https://github.com/fluent/fluentd/pull/4159
+
+## Release v1.16.1 - 2023/04/17
+
+### Enhancement
+
+* in_tcp: Add `message_length_limit` to drop large incoming data
+  https://github.com/fluent/fluentd/pull/4137
+
+### Bug Fix
+
+* Fix NameError of `SecondaryFileOutput` when setting secondary other than
+  `out_secondary_file`
+  https://github.com/fluent/fluentd/pull/4124
+* Server helper: Suppress error of `UDPServer` over `max_bytes` on Windows
+  https://github.com/fluent/fluentd/pull/4131
+* Buffer: Fix that `compress` setting causes unexpected error when receiving
+  already compressed MessagePack
+  https://github.com/fluent/fluentd/pull/4147
+
+### Misc
+
+* Update MAINTAINERS.md
+  https://github.com/fluent/fluentd/pull/4119
+* Update security policy
+  https://github.com/fluent/fluentd/pull/4123
+* Plugin template: Remove unnecessary code
+  https://github.com/fluent/fluentd/pull/4128
+* Revive issue auto closer
+  https://github.com/fluent/fluentd/pull/4116
+* Fix a link for the repository of td-agent
+  https://github.com/fluent/fluentd/pull/4145
+* in_udp: add test of message_length_limit
+  https://github.com/fluent/fluentd/pull/4117
+* Fix a typo of an argument of `Fluent::EventStream#each`
+  https://github.com/fluent/fluentd/pull/4148
+* Test in_tcp: Fix undesirable way to assert logs
+  https://github.com/fluent/fluentd/pull/4138
+
+## Release v1.16.0 - 2023/03/29
+
+### Enhancement
+
+* in_tcp: Add `send_keepalive_packet` option
+  https://github.com/fluent/fluentd/pull/3961
+* buffer: backup broken file chunk
+  https://github.com/fluent/fluentd/pull/4025
+* Add warning messages for restoring buffer with `flush_at_shutdown true`
+  https://github.com/fluent/fluentd/pull/4027
+* Add logs for time period of restored buffer possibly broken
+  https://github.com/fluent/fluentd/pull/4028
+
+### Bug Fix
+
+* http_server_helper: Fix format of log messages originating from Async gem
+  https://github.com/fluent/fluentd/pull/3987
+* Change to not generate a sigdump file after receiving a `SIGTERM` signal on
+  non-Windows
+  https://github.com/fluent/fluentd/pull/4034
+  https://github.com/fluent/fluentd/pull/4043
+* out_forward: fix error of ack handling conflict on stopping with
+  `require_ack_response` enabled
+  https://github.com/fluent/fluentd/pull/4030
+* Fix problem that some `system` configs are not reflected
+  https://github.com/fluent/fluentd/pull/4064
+  https://github.com/fluent/fluentd/pull/4065
+  https://github.com/fluent/fluentd/pull/4086
+  https://github.com/fluent/fluentd/pull/4090
+  https://github.com/fluent/fluentd/pull/4096
+* Fix bug that the logger outputs some initial log messages without applying
+  some settings such as `format`
+  https://github.com/fluent/fluentd/pull/4091
+* Windows: Fix a bug that the wrong log file is reopened with log rotate setting
+  when flushing or graceful reloading
+  https://github.com/fluent/fluentd/pull/4054
+* Fix race condition of out_secondary_file
+  https://github.com/fluent/fluentd/pull/4081
+* Suppress warning using different secondary for out_secondary_file
+  https://github.com/fluent/fluentd/pull/4087
+* Fix value of `system_config.workers` at `run_configure`.
+  Change argument type of `Fluent::Plugin::Base::configure()` to
+  `Fluent::Config::Element` only.
+  https://github.com/fluent/fluentd/pull/4066
+* Fix bug that Fluentd sometimes tries to use an unavailable port and fails to
+  start on Windows
+  https://github.com/fluent/fluentd/pull/4092
+
+### Misc
+
+* Add method for testing `filtered_with_time`
+  https://github.com/fluent/fluentd/pull/3899
+* Replace `$$` with `Process.pid`
+  https://github.com/fluent/fluentd/pull/4040
+* Relax required webric gem version
+  https://github.com/fluent/fluentd/pull/4061
+* CI fixes to support Ruby 3.2
+  https://github.com/fluent/fluentd/pull/3968
+  https://github.com/fluent/fluentd/pull/3996
+  https://github.com/fluent/fluentd/pull/3997
+* Other CI fixes
+  https://github.com/fluent/fluentd/pull/3969
+  https://github.com/fluent/fluentd/pull/3990
+  https://github.com/fluent/fluentd/pull/4013
+  https://github.com/fluent/fluentd/pull/4033
+  https://github.com/fluent/fluentd/pull/4044
+  https://github.com/fluent/fluentd/pull/4050
+  https://github.com/fluent/fluentd/pull/4062
+  https://github.com/fluent/fluentd/pull/4074
+  https://github.com/fluent/fluentd/pull/4082
+  https://github.com/fluent/fluentd/pull/4085
+* Update MAINTAINERS.md
+  https://github.com/fluent/fluentd/pull/4026
+  https://github.com/fluent/fluentd/pull/4069
+
 # v1.15
 
 ## Release v1.15.3 - 2022/11/02

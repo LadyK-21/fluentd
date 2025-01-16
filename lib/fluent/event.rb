@@ -49,7 +49,7 @@ module Fluent
       raise NotImplementedError, "DO NOT USE THIS CLASS directly."
     end
 
-    def each(unapcker: nil, &block)
+    def each(unpacker: nil, &block)
       raise NotImplementedError, "DO NOT USE THIS CLASS directly."
     end
 
@@ -294,7 +294,7 @@ module Fluent
       super
     end
 
-    def to_compressed_msgpack_stream(time_int: false)
+    def to_compressed_msgpack_stream(time_int: false, packer: nil)
       # time_int is always ignored because @data is always packed binary in this class
       @compressed_data
     end
@@ -308,11 +308,15 @@ module Fluent
   end
 
   module ChunkMessagePackEventStreamer
-    # chunk.extend(ChunkEventStreamer)
+    # chunk.extend(ChunkMessagePackEventStreamer)
     #  => chunk.each{|time, record| ... }
     def each(unpacker: nil, &block)
+      # Note: If need to use `unpacker`, then implement it,
+      # e.g., `unpacker.feed_each(io.read, &block)` (Not tested)
+      raise NotImplementedError, "'unpacker' argument is not implemented." if unpacker
+
       open do |io|
-        (unpacker || Fluent::MessagePackFactory.msgpack_unpacker(io)).each(&block)
+        Fluent::MessagePackFactory.msgpack_unpacker(io).each(&block)
       end
       nil
     end

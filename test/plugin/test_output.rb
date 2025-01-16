@@ -98,16 +98,16 @@ module FluentPluginOutputTest
 end
 
 class OutputTest < Test::Unit::TestCase
-    class << self
-      def startup
-        $LOAD_PATH.unshift File.expand_path(File.join(File.dirname(__FILE__), '../scripts'))
-        require 'fluent/plugin/out_test'
-      end
-
-      def shutdown
-        $LOAD_PATH.shift
-      end
+  class << self
+    def startup
+      $LOAD_PATH.unshift File.expand_path(File.join(File.dirname(__FILE__), '../scripts'))
+      require 'fluent/plugin/out_test'
     end
+
+    def shutdown
+      $LOAD_PATH.shift
+    end
+  end
 
   def create_output(type=:full)
     case type
@@ -447,25 +447,25 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', '')]))
         validators = @i.placeholder_validators(:path, "/my/path/${tag}/${username}/file.%Y%m%d_%H%M.log")
         assert_equal 3, validators.size
-        assert_equal 1, validators.select(&:time?).size
-        assert_equal 1, validators.select(&:tag?).size
-        assert_equal 1, validators.select(&:keys?).size
+        assert_equal 1, validators.count(&:time?)
+        assert_equal 1, validators.count(&:tag?)
+        assert_equal 1, validators.count(&:keys?)
       end
 
       test 'returns validators for time, tag and keys when a plugin is configured with these keys even if a template does not have placeholders' do
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', 'time,tag,username', {'timekey' => 60})]))
         validators = @i.placeholder_validators(:path, "/my/path/file.log")
         assert_equal 3, validators.size
-        assert_equal 1, validators.select(&:time?).size
-        assert_equal 1, validators.select(&:tag?).size
-        assert_equal 1, validators.select(&:keys?).size
+        assert_equal 1, validators.count(&:time?)
+        assert_equal 1, validators.count(&:tag?)
+        assert_equal 1, validators.count(&:keys?)
       end
 
       test 'returns a validator for time if a template has timestamp placeholders' do
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', '')]))
         validators = @i.placeholder_validators(:path, "/my/path/file.%Y-%m-%d.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:time?).size
+        assert_equal 1, validators.count(&:time?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/file.%Y-%m-%d.log' has timestamp placeholders, but chunk key 'time' is not configured") do
           validators.first.validate!
         end
@@ -475,7 +475,7 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', 'time', {'timekey' => '30'})]))
         validators = @i.placeholder_validators(:path, "/my/path/to/file.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:time?).size
+        assert_equal 1, validators.count(&:time?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/to/file.log' doesn't have timestamp placeholders for timekey 30") do
           validators.first.validate!
         end
@@ -485,7 +485,7 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', '')]))
         validators = @i.placeholder_validators(:path, "/my/path/${tag}/file.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:tag?).size
+        assert_equal 1, validators.count(&:tag?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/${tag}/file.log' has tag placeholders, but chunk key 'tag' is not configured") do
           validators.first.validate!
         end
@@ -495,7 +495,7 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', 'tag')]))
         validators = @i.placeholder_validators(:path, "/my/path/file.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:tag?).size
+        assert_equal 1, validators.count(&:tag?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/file.log' doesn't have tag placeholder") do
           validators.first.validate!
         end
@@ -505,7 +505,7 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', '')]))
         validators = @i.placeholder_validators(:path, "/my/path/${username}/file.${group}.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:keys?).size
+        assert_equal 1, validators.count(&:keys?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/${username}/file.${group}.log' has placeholders, but chunk keys doesn't have keys group,username") do
           validators.first.validate!
         end
@@ -515,7 +515,7 @@ class OutputTest < Test::Unit::TestCase
         @i.configure(config_element('ROOT', '', {}, [config_element('buffer', 'username,group')]))
         validators = @i.placeholder_validators(:path, "/my/path/file.log")
         assert_equal 1, validators.size
-        assert_equal 1, validators.select(&:keys?).size
+        assert_equal 1, validators.count(&:keys?)
         assert_raise Fluent::ConfigError.new("Parameter 'path: /my/path/file.log' doesn't have enough placeholders for keys group,username") do
           validators.first.validate!
         end
@@ -803,7 +803,10 @@ class OutputTest < Test::Unit::TestCase
     end
 
     test 'output plugin will call #try_write for plugin supports delayed commit only to flush buffer chunks' do
+      tmp_dir = File.join(__dir__, '../tmp/test_output')
+
       i = create_output(:delayed)
+      i.system_config_override(root_dir: tmp_dir) # Backup files are generated in `tmp_dir`.
       try_write_called = false
       i.register(:try_write){|chunk| try_write_called = true; commit_write(chunk.unique_id) }
 
@@ -820,6 +823,8 @@ class OutputTest < Test::Unit::TestCase
       assert try_write_called
 
       i.stop; i.before_shutdown; i.shutdown; i.after_shutdown; i.close; i.terminate
+    ensure
+      FileUtils.rm_rf(tmp_dir)
     end
 
     test '#prefer_delayed_commit (returns false) decides delayed commit is disabled if both are implemented' do
@@ -849,7 +854,10 @@ class OutputTest < Test::Unit::TestCase
     end
 
     test '#prefer_delayed_commit (returns true) decides delayed commit is enabled if both are implemented' do
+      tmp_dir = File.join(__dir__, '../tmp/test_output')
+
       i = create_output(:full)
+      i.system_config_override(root_dir: tmp_dir) # Backup files are generated in `tmp_dir`.
       write_called = false
       try_write_called = false
       i.register(:write){ |chunk| write_called = true }
@@ -872,6 +880,8 @@ class OutputTest < Test::Unit::TestCase
       assert try_write_called
 
       i.stop; i.before_shutdown; i.shutdown; i.after_shutdown; i.close; i.terminate
+    ensure
+      FileUtils.rm_rf(tmp_dir)
     end
 
     test 'flush_interval is ignored when flush_mode is not interval' do
@@ -1060,6 +1070,265 @@ class OutputTest < Test::Unit::TestCase
         logs = i.log.out.logs
         assert{ logs.any?{|log| log.include?("buffer flush took longer time than slow_flush_log_threshold: elapsed_time") } }
       }
+    end
+  end
+
+  sub_test_case "actual_flush_thread_count" do
+    data(
+      "Not buffered",
+      {
+        output_type: :sync,
+        config: config_element(),
+        expected: 0,
+      }
+    )
+    data(
+      "Buffered with singile thread",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {})]),
+        expected: 1,
+      }
+    )
+    data(
+      "Buffered with multiple threads",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {"flush_thread_count" => 8})]),
+        expected: 8,
+      }
+    )
+    test "actual_flush_thread_count" do |data|
+      o = create_output(data[:output_type])
+      o.configure(data[:config])
+      assert_equal data[:expected], o.actual_flush_thread_count
+    end
+
+    data(
+      "Buffered with single thread",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {}), 
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        expected: 1,
+      }
+    )
+    data(
+      "Buffered with multiple threads",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {"flush_thread_count" => 8}),
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        expected: 8,
+      }
+    )
+    test "actual_flush_thread_count for secondary" do |data|
+      primary = create_output(data[:output_type])
+      primary.configure(data[:config])
+      assert_equal data[:expected], primary.secondary.actual_flush_thread_count
+    end
+  end
+
+  sub_test_case "synchronize_path" do
+    def setup
+      Dir.mktmpdir do |lock_dir|
+        ENV['FLUENTD_LOCK_DIR'] = lock_dir
+        yield
+      end
+    end
+
+    def assert_worker_lock(lock_path, expect_locked)
+      # With LOCK_NB set, flock() returns:
+      #   * `false` when the file is already locked.
+      #   * `0` when the file is not locked.
+      File.open(lock_path, "w") do |f|
+        if expect_locked
+          assert_equal false, f.flock(File::LOCK_EX|File::LOCK_NB)
+        else
+          assert_equal 0, f.flock(File::LOCK_EX|File::LOCK_NB)
+        end
+      end
+    end
+
+    def assert_thread_lock(output_plugin, expect_locked)
+      t = Thread.new do
+        output_plugin.synchronize_path("test") do
+        end
+      end
+      if expect_locked
+        assert_nil t.join(3)
+      else
+        assert_not_nil t.join(3)
+      end
+    end
+
+    data(
+      "Not buffered with single worker",
+      {
+        output_type: :sync,
+        config: config_element(),
+        workers: 1,
+        expect_worker_lock: false,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Not buffered with multiple workers",
+      {
+        output_type: :sync,
+        config: config_element(),
+        workers: 4,
+        expect_worker_lock: true,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Buffered with single thread and single worker",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {})]),
+        workers: 1,
+        expect_worker_lock: false,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Buffered with multiple threads and single worker",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {"flush_thread_count" => 8})]),
+        workers: 1,
+        expect_worker_lock: false,
+        expect_thread_lock: true,
+      }
+    )
+    data(
+      "Buffered with single thread and multiple workers",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {})]),
+        workers: 4,
+        expect_worker_lock: true,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Buffered with multiple threads and multiple workers",
+      {
+        output_type: :full,
+        config: config_element("ROOT", "", {}, [config_element("buffer", "", {"flush_thread_count" => 8})]),
+        workers: 4,
+        expect_worker_lock: true,
+        expect_thread_lock: true,
+      }
+    )
+    test "synchronize_path" do |data|
+      o = create_output(data[:output_type])
+      o.configure(data[:config])
+      o.system_config_override(workers: data[:workers])
+
+      test_lock_name = "test_lock_name"
+      lock_path = o.get_lock_path(test_lock_name)
+
+      o.synchronize_path(test_lock_name) do
+        assert_worker_lock(lock_path, data[:expect_worker_lock])
+        assert_thread_lock(o, data[:expect_thread_lock])
+      end
+
+      assert_worker_lock(lock_path, false)
+      assert_thread_lock(o, false)
+    end
+
+    data(
+      "Buffered with single thread and single worker",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {}),
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        workers: 1,
+        expect_worker_lock: false,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Buffered with multiple threads and single worker",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {"flush_thread_count" => 8}),
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        workers: 1,
+        expect_worker_lock: false,
+        expect_thread_lock: true,
+      }
+    )
+    data(
+      "Buffered with single thread and multiple workers",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {}),
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        workers: 4,
+        expect_worker_lock: true,
+        expect_thread_lock: false,
+      }
+    )
+    data(
+      "Buffered with multiple threads and multiple workers",
+      {
+        output_type: :full,
+        config: config_element(
+          "ROOT", "", {},
+          [
+            config_element("buffer", "", {"flush_thread_count" => 8}),
+            config_element("secondary", "", {"@type" => "test", "name" => "test"}),
+          ]
+        ),
+        workers: 4,
+        expect_worker_lock: true,
+        expect_thread_lock: true,
+      }
+    )
+    test "synchronize_path for secondary" do |data|
+      primary = create_output(data[:output_type])
+      primary.configure(data[:config])
+      secondary = primary.secondary
+      secondary.system_config_override(workers: data[:workers])
+
+      test_lock_name = "test_lock_name"
+      lock_path = secondary.get_lock_path(test_lock_name)
+
+      secondary.synchronize_path(test_lock_name) do
+        assert_worker_lock(lock_path, data[:expect_worker_lock])
+        assert_thread_lock(secondary, data[:expect_thread_lock])
+      end
+
+      assert_worker_lock(lock_path, false)
+      assert_thread_lock(secondary, false)
     end
   end
 end
